@@ -4,11 +4,11 @@ from typing import List, Dict, Any
 
 router = APIRouter()
 
-@router.get("/")
+@router.get("")
 def get_templates():
     return template_service.get_templates()
 
-@router.post("/")
+@router.post("")
 def update_templates(templates: List[Dict[str, Any]]):
     template_service.update_templates(templates)
     return {"status": "success"}
