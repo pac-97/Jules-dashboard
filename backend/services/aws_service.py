@@ -95,6 +95,7 @@ class AWSService:
         key = "all-ac-security-scores/May_benchmark_scores.csv"
         raw_bytes = self._get_s3_object_bytes(key, bucket)
         if not raw_bytes:
+            logger.error(f"No raw bytes returned from S3 for {bucket}/{key}")
             return None
 
         try:
@@ -104,10 +105,55 @@ class AWSService:
             return None
 
         df.columns = [str(c).strip().lower() for c in df.columns]
-        if 'date' not in df.columns and not df.empty:
-            df['date'] = df.iloc[:, 0]
+        df = self._normalize_score_columns(df)
 
-        df['date'] = pd.to_datetime(df['date'], errors='coerce')
+        if df.empty:
+            return df
+
+        date_col = None
+        for candidate in ['date', 'day', 'timestamp', 'report_date', 'reportdate']:
+            if candidate in df.columns:
+                date_col = candidate
+                break
+
+        if date_col is None:
+            date_col = df.columns[0]
+
+        df['date'] = pd.to_datetime(df[date_col], errors='coerce')
+        if df['date'].isnull().all():
+            logger.error("No valid date column found in scores CSV.")
+            return None
+
+        df = df.dropna(subset=['date'])
+        return df
+
+    def _normalize_score_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        rename_map = {}
+        for col in df.columns:
+            normalized = col.replace(' ', '').replace('-', '').replace('_', '')
+            if normalized in ('accountid', 'acctid', 'accountnumber', 'awsaccountid', 'awsaccountnumber', 'account'):
+                rename_map[col] = 'accountid'
+            elif normalized in ('compliancescore', 'compliancepercentage', 'score'):
+                rename_map[col] = 'compliance_score'
+            elif normalized == 'cisscore':
+                rename_map[col] = 'cis_score'
+            elif normalized == 'nistscore':
+                rename_map[col] = 'nist_score'
+            elif normalized == 'critical':
+                rename_map[col] = 'critical'
+            elif normalized == 'high':
+                rename_map[col] = 'high'
+            elif normalized == 'medium':
+                rename_map[col] = 'medium'
+            elif normalized == 'low':
+                rename_map[col] = 'low'
+            elif normalized == 'severity':
+                rename_map[col] = 'severity'
+
+        df = df.rename(columns=rename_map)
+        for col in ['compliance_score', 'cis_score', 'nist_score', 'critical', 'high', 'medium', 'low']:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
         return df
 
     def _get_s3_object_bytes(self, key: str, bucket: str) -> bytes:
@@ -159,16 +205,41 @@ class AWSService:
         trend_data = trend_df.to_dict('records')
         return trend_data
 
+    def get_dashboard_summary_from_scores(self) -> Dict[str, Any]:
+        df = self._get_scores_dataframe_from_s3()
+        if df is None or df.empty:
+            return {
+                'total_findings': 0,
+                'critical_findings': 0,
+                'high_findings': 0,
+                'compliance_score': 0,
+                'cis_score': 0,
+                'nist_score': 0
+            }
+
+        total_findings = len(df)
+        critical_findings = int(df['severity'].astype(str).str.upper().eq('CRITICAL').sum()) if 'severity' in df.columns else int(df['critical'].sum()) if 'critical' in df.columns else 0
+        high_findings = int(df['severity'].astype(str).str.upper().eq('HIGH').sum()) if 'severity' in df.columns else int(df['high'].sum()) if 'high' in df.columns else 0
+
+        return {
+            'total_findings': total_findings,
+            'critical_findings': critical_findings,
+            'high_findings': high_findings,
+            'compliance_score': float(df['compliance_score'].mean()) if 'compliance_score' in df.columns else 0,
+            'cis_score': float(df['cis_score'].mean()) if 'cis_score' in df.columns else 0,
+            'nist_score': float(df['nist_score'].mean()) if 'nist_score' in df.columns else 0
+        }
+
     def get_account_scores_for_accounts(self, account_ids: List[str]) -> Any:
         df = self._get_scores_dataframe_from_s3()
         if df is None or df.empty:
             return pd.DataFrame()
 
         account_col = None
-        if 'accountid' in df.columns:
-            account_col = 'accountid'
-        elif 'account_id' in df.columns:
-            account_col = 'account_id'
+        for candidate in ['accountid', 'account_id', 'acctid', 'account', 'awsaccountid', 'aws_account_id', 'aws_account']:
+            if candidate in df.columns:
+                account_col = candidate
+                break
 
         if not account_col:
             logger.error("Account ID column not found in scores CSV.")
