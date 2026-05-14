@@ -68,30 +68,47 @@ class AWSService:
 
     def get_all_accounts_from_s3(self) -> List[Dict[str, str]]:
         accounts = []
-        if not self.s3_client:
-            logger.error("Boto3 S3 client not initialized. Cannot derive account list from S3.")
+        scores_df = self._get_scores_dataframe_from_s3()
+        if scores_df is None or scores_df.empty:
             return accounts
 
-        bucket = os.getenv("AWS_S3_REPORT_BUCKET", "aws-security-reports")
-        prefix = os.getenv("AWS_S3_ACCOUNT_REPORT_PREFIX", "account_reports/")
+        account_col = None
+        if 'accountid' in scores_df.columns:
+            account_col = 'accountid'
+        elif 'account_id' in scores_df.columns:
+            account_col = 'account_id'
+
+        if not account_col:
+            logger.error("Account ID column not found in scores CSV.")
+            return accounts
+
+        for account_id in sorted(scores_df[account_col].dropna().astype(str).unique()):
+            accounts.append({
+                "id": account_id,
+                "name": account_id,
+                "email": ""
+            })
+        return accounts
+
+    def _get_scores_dataframe_from_s3(self) -> Any:
+        bucket = "centralized-security-findings"
+        key = "all-ac-security-scores/May_benchmark_scores.csv"
+        raw_bytes = self._get_s3_object_bytes(key, bucket)
+        if not raw_bytes:
+            return None
 
         try:
-            paginator = self.s3_client.get_paginator('list_objects_v2')
-            for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
-                for obj in page.get('Contents', []):
-                    key = obj.get('Key', '')
-                    filename = os.path.basename(key)
-                    if filename.lower().endswith('.xlsx'):
-                        account_id = os.path.splitext(filename)[0]
-                        accounts.append({
-                            "id": account_id,
-                            "name": account_id,
-                            "email": ""
-                        })
+            df = pd.read_csv(io.BytesIO(raw_bytes))
         except Exception as e:
-            logger.error(f"Error deriving AWS accounts from S3 bucket {bucket} prefix {prefix}: {e}")
+            logger.error(f"Error reading scores CSV from S3: {e}")
+            return None
 
-        return accounts
+        df.columns = [str(c).strip().lower() for c in df.columns]
+        if 'date' not in df.columns and not df.empty:
+            df['date'] = df.iloc[:, 0]
+
+        df['date'] = pd.to_datetime(df['date'], errors='coerce')
+        return df
 
     def _get_s3_object_bytes(self, key: str, bucket: str) -> bytes:
         if not self.s3_client:
@@ -106,75 +123,59 @@ class AWSService:
             return b""
 
     def get_s3_historical_data(self) -> List[Dict[str, Any]]:
-        bucket = os.getenv("AWS_S3_TRENDS_BUCKET", "centralized-security-findings")
-        trend_key = os.getenv("AWS_S3_TRENDS_KEY", "all-ac-security-scores/May_benchmark_scores.csv")
-        raw_bytes = self._get_s3_object_bytes(trend_key, bucket)
-
-        if raw_bytes:
-            try:
-                if trend_key.lower().endswith('.csv'):
-                    df = pd.read_csv(io.BytesIO(raw_bytes))
-                else:
-                    workbook = pd.read_excel(io.BytesIO(raw_bytes), sheet_name=None)
-                    if not workbook:
-                        return []
-                    df = workbook.get('Sheet1') or next(iter(workbook.values()))
-
-                if df is None or df.empty:
-                    return []
-
-                df.columns = [str(c).lower() for c in df.columns]
-                if 'date' not in df.columns:
-                    df['date'] = df.iloc[:, 0]
-
-                df['date'] = pd.to_datetime(df['date'], errors='coerce').dt.strftime('%Y-%m-%d')
-                trend_data = []
-                for _, row in df.iterrows():
-                    trend_data.append({
-                        'date': row.get('date'),
-                        'compliance_score': float(row.get('compliance_score', 0) or 0),
-                        'cis_score': float(row.get('cis_score', 0) or 0),
-                        'nist_score': float(row.get('nist_score', 0) or 0),
-                        'critical': int(row.get('critical', 0) or 0),
-                        'high': int(row.get('high', 0) or 0),
-                        'medium': int(row.get('medium', 0) or 0),
-                        'low': int(row.get('low', 0) or 0)
-                    })
-                return trend_data
-            except Exception as e:
-                logger.error(f"Error parsing trend data from S3: {e}")
-
-        # Fallback to JSON data if XLSX does not exist.
-        json_key = os.getenv("AWS_S3_TRENDS_JSON_KEY", "findings_count_trends.json")
-        if not self.s3_client:
+        df = self._get_scores_dataframe_from_s3()
+        if df is None or df.empty:
             return []
 
-        try:
-            response = self.s3_client.get_object(Bucket=os.getenv("AWS_S3_TRENDS_BUCKET", "aws-security-historical-findings"), Key=json_key)
-            data = json.loads(response['Body'].read().decode('utf-8'))
-            return data
-        except Exception as e:
-            logger.error(f"Error fetching JSON trend data from S3: {e}")
-            return []
+        numeric_columns = [
+            'compliance_score',
+            'cis_score',
+            'nist_score',
+            'critical',
+            'high',
+            'medium',
+            'low'
+        ]
 
-    def download_account_reports(self, account_ids: List[str]) -> Dict[str, bytes]:
-        reports: Dict[str, bytes] = {}
-        if not self.s3_client:
-            logger.error("Boto3 S3 client not initialized. Cannot fetch account reports from S3.")
-            return reports
-
-        bucket = os.getenv("AWS_S3_REPORT_BUCKET", "aws-security-reports")
-        template = os.getenv("AWS_S3_ACCOUNT_REPORT_KEY_TEMPLATE", "account_reports/{account_id}.xlsx")
-
-        for account_id in account_ids:
-            key = template.format(account_id=account_id)
-            report_bytes = self._get_s3_object_bytes(key, bucket)
-            if report_bytes:
-                reports[account_id] = report_bytes
+        for col in numeric_columns:
+            if col not in df.columns:
+                df[col] = 0
             else:
-                logger.warning(f"Account report XLSX not found for account {account_id} in S3 key {key}")
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
-        return reports
+        df = df.dropna(subset=['date'])
+        df['date'] = df['date'].dt.strftime('%Y-%m-%d')
+
+        trend_df = df.groupby('date', as_index=False).agg({
+            'compliance_score': 'mean',
+            'cis_score': 'mean',
+            'nist_score': 'mean',
+            'critical': 'sum',
+            'high': 'sum',
+            'medium': 'sum',
+            'low': 'sum'
+        })
+
+        trend_data = trend_df.to_dict('records')
+        return trend_data
+
+    def get_account_scores_for_accounts(self, account_ids: List[str]) -> Any:
+        df = self._get_scores_dataframe_from_s3()
+        if df is None or df.empty:
+            return pd.DataFrame()
+
+        account_col = None
+        if 'accountid' in df.columns:
+            account_col = 'accountid'
+        elif 'account_id' in df.columns:
+            account_col = 'account_id'
+
+        if not account_col:
+            logger.error("Account ID column not found in scores CSV.")
+            return pd.DataFrame()
+
+        filtered = df[df[account_col].astype(str).isin([str(a) for a in account_ids])].copy()
+        return filtered
 
     def get_inspector_findings(self) -> List[Dict[str, Any]]:
         findings = []
@@ -277,22 +278,5 @@ class AWSService:
             logger.error(f"Error fetching real SecurityHub findings: {e}")
 
         return result
-
-    def get_s3_historical_data(self) -> List[Dict[str, Any]]:
-        if not self.s3_client:
-            logger.error("Boto3 S3 client not initialized. Cannot fetch real data.")
-            return []
-
-        try:
-            import json
-            bucket = os.getenv("AWS_S3_TRENDS_BUCKET", "aws-security-historical-findings")
-            key = "findings_count_trends.json"
-            response = self.s3_client.get_object(Bucket=bucket, Key=key)
-            data = json.loads(response['Body'].read().decode('utf-8'))
-            logger.info(f"Successfully retrieved historical trend data from S3 bucket {bucket}.")
-            return data
-        except Exception as e:
-            logger.error(f"Error fetching real S3 historical data: {e}")
-            return []
 
 aws_service = AWSService()

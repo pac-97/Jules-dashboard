@@ -41,10 +41,10 @@ def send_custom_email(req: EmailSendRequest):
             'findings': [f for f in cspm_findings.get('findings', []) if f.get('accountId') in req.accounts]
         }
 
-        # 2b. Download account-level XLSX reports from S3 and merge if multiple accounts are selected
-        account_reports = aws_service.download_account_reports(req.accounts)
-        merged_account_report = report_service.merge_account_reports(account_reports) if account_reports else b""
-        account_summary = report_service.summarize_account_reports(account_reports)
+        # 2b. Build account report from the single shared S3 scores sheet
+        account_scores_df = aws_service.get_account_scores_for_accounts(req.accounts)
+        merged_account_report = report_service.generate_account_report_from_scores(account_scores_df)
+        account_summary = report_service.summarize_account_scores(account_scores_df)
 
         # 3. Generate Reports
         inspector_xlsx = report_service.generate_inspector_report(owner_inspector)
