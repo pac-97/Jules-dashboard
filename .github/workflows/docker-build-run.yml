@@ -1,0 +1,51 @@
+name: Build and Run Docker Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      port:
+        description: 'Port to run the application on (must be 3000 or 4000)'
+        required: true
+        default: '3000'
+        type: choice
+        options:
+          - '3000'
+          - '4000'
+
+jobs:
+  build_and_run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          echo "Building Docker image aws-security-dashboard..."
+          docker build -t aws-security-dashboard:latest .
+
+      - name: Stop existing container (if any)
+        run: |
+          docker stop security-dashboard || true
+          docker rm security-dashboard || true
+
+      - name: Run Docker container
+        run: |
+          echo "Running application on port ${{ github.event.inputs.port }}..."
+          docker run -d --name security-dashboard -p ${{ github.event.inputs.port }}:3000 aws-security-dashboard:latest
+
+      - name: Get Private IP and Print Access URL
+        run: |
+          PRIVATE_IP=$(hostname -I | awk '{print $1}')
+          PORT=${{ github.event.inputs.port }}
+
+          echo "==========================================================="
+          echo "🚀 Application deployed successfully!"
+          echo "👉 Access the website at: http://${PRIVATE_IP}:${PORT}"
+          echo "==========================================================="
+
+          # Wait a few seconds to let FastAPI boot up, then check status
+          sleep 5
+          docker logs security-dashboard
+          curl -s http://localhost:${PORT}/health || echo "Application not responding yet."
