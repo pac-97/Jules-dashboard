@@ -63,8 +63,16 @@ export function OwnerDashboard() {
             <Users className="w-5 h-5 text-gray-400" />
             Owner Mappings
           </h3>
-          <button className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-            Import Mappings (CSV)
+          <button
+            onClick={() => {
+              const tid = toast.loading("Syncing AWS Accounts...");
+              axios.post("/api/owners/sync").then(res => {
+                toast.success(`Synced ${res.data.synced} new accounts.`, { id: tid });
+                fetchOwners();
+              }).catch(() => toast.error("Sync failed", { id: tid }));
+            }}
+            className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+            Sync AWS Accounts
           </button>
         </div>
         <div className="overflow-x-auto">

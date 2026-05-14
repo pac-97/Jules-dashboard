@@ -17,7 +17,12 @@ docker stop security-dashboard 2>/dev/null || true
 docker rm security-dashboard 2>/dev/null || true
 
 echo "▶️  Starting container on port $PORT..."
-docker run -d --name security-dashboard -p $PORT:3000 aws-security-dashboard:latest
+docker run -d \
+  --name security-dashboard \
+  -p $PORT:3000 \
+  -v ~/.aws:/root/.aws:ro \
+  -e AWS_PROFILE=${AWS_PROFILE:-default} \
+  aws-security-dashboard:latest
 
 # Fetch private IP
 PRIVATE_IP=$(hostname -I | awk '{print $1}')

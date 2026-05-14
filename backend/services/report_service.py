@@ -4,11 +4,15 @@ import io
 
 class ReportService:
     def generate_inspector_report(self, findings: List[Dict[str, Any]]) -> bytes:
-        df = pd.DataFrame(findings)
-
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            # Executive Summary
+            if not findings:
+                pd.DataFrame([{'Message': 'No findings available'}]).to_excel(writer, sheet_name='Executive Summary', index=False)
+                return output.getvalue()
+
+            df = pd.DataFrame(findings)
+
+            # Global Executive Summary
             summary_data = {
                 'Metric': ['Total Findings', 'Critical', 'High'],
                 'Value': [
@@ -19,8 +23,13 @@ class ReportService:
             }
             pd.DataFrame(summary_data).to_excel(writer, sheet_name='Executive Summary', index=False)
 
-            # Full Findings
-            df.to_excel(writer, sheet_name='All Findings', index=False)
+            # Group findings into separate sheets by AWS Account ID
+            if 'accountId' in df.columns:
+                for account_id, group in df.groupby('accountId'):
+                    sheet_name = f"Account {account_id}"[:31]  # Excel limits sheet names to 31 chars
+                    group.to_excel(writer, sheet_name=sheet_name, index=False)
+            else:
+                df.to_excel(writer, sheet_name='All Findings', index=False)
 
         return output.getvalue()
 
@@ -40,9 +49,17 @@ class ReportService:
             }
             pd.DataFrame(scorecard).to_excel(writer, sheet_name='Scorecard', index=False)
 
-            # Failed Controls
-            if 'findings' in cspm_data:
-                pd.DataFrame(cspm_data['findings']).to_excel(writer, sheet_name='Failed Controls', index=False)
+            # Group Failed Controls into separate sheets by AWS Account ID
+            if 'findings' in cspm_data and cspm_data['findings']:
+                df = pd.DataFrame(cspm_data['findings'])
+                if 'accountId' in df.columns:
+                    for account_id, group in df.groupby('accountId'):
+                        sheet_name = f"Failed {account_id}"[:31]
+                        group.to_excel(writer, sheet_name=sheet_name, index=False)
+                else:
+                    df.to_excel(writer, sheet_name='Failed Controls', index=False)
+            else:
+                pd.DataFrame([{'Message': 'No failed controls available'}]).to_excel(writer, sheet_name='Failed Controls', index=False)
 
         return output.getvalue()
 

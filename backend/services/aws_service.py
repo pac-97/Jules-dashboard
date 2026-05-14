@@ -15,11 +15,49 @@ class AWSService:
             self.inspector_client = self.session.client('inspector2')
             self.securityhub_client = self.session.client('securityhub')
             self.s3_client = self.session.client('s3')
+            self.org_client = self.session.client('organizations')
+            self.sts_client = self.session.client('sts')
         except Exception as e:
             logger.error(f"Failed to initialize boto3 session/clients: {e}")
             self.inspector_client = None
             self.securityhub_client = None
             self.s3_client = None
+            self.org_client = None
+            self.sts_client = None
+
+    def get_aws_identity(self) -> Dict[str, str]:
+        if not self.sts_client:
+            return {"status": "Disconnected", "identity": "No STS Client"}
+        try:
+            identity = self.sts_client.get_caller_identity()
+            return {
+                "status": "Connected",
+                "account": identity.get("Account"),
+                "arn": identity.get("Arn"),
+                "userId": identity.get("UserId")
+            }
+        except Exception as e:
+            logger.error(f"Error fetching AWS identity: {e}")
+            return {"status": "Error", "identity": str(e)}
+
+    def get_all_accounts(self) -> List[Dict[str, str]]:
+        accounts = []
+        if not self.org_client:
+            logger.error("Boto3 Organizations client not initialized.")
+            return accounts
+        try:
+            paginator = self.org_client.get_paginator('list_accounts')
+            for page in paginator.paginate():
+                for account in page.get('Accounts', []):
+                    if account.get('Status') == 'ACTIVE':
+                        accounts.append({
+                            "id": account.get('Id'),
+                            "name": account.get('Name'),
+                            "email": account.get('Email')
+                        })
+        except Exception as e:
+            logger.error(f"Error fetching AWS Accounts: {e}")
+        return accounts
 
     def get_inspector_findings(self) -> List[Dict[str, Any]]:
         findings = []

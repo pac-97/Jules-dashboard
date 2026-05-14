@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { Activity, PlayCircle, Clock } from "lucide-react";
+import { Activity, PlayCircle, Clock, ShieldCheck, ShieldAlert } from "lucide-react";
 
 export function OperationsDashboard() {
   const [jobs, setJobs] = useState<any[]>([]);
+  const [awsStatus, setAwsStatus] = useState<any>(null);
 
   useEffect(() => {
     axios.get("/api/operations/jobs").then((res) => setJobs(res.data)).catch(console.error);
+    axios.get("/api/operations/aws-status").then((res) => setAwsStatus(res.data)).catch(console.error);
   }, []);
 
   const triggerJob = () => {
@@ -19,7 +21,20 @@ export function OperationsDashboard() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">Operations & Logs</h2>
-        <div className="text-sm text-gray-500">Scheduler & Job History</div>
+        <div className="flex items-center gap-2">
+          {awsStatus?.status === 'Connected' ? (
+            <span className="flex items-center gap-1 text-green-600 bg-green-50 dark:bg-green-900/20 px-3 py-1 rounded-full text-xs font-bold border border-green-200 dark:border-green-800">
+              <ShieldCheck className="w-4 h-4" />
+              AWS Linked: {awsStatus.account}
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 text-red-600 bg-red-50 dark:bg-red-900/20 px-3 py-1 rounded-full text-xs font-bold border border-red-200 dark:border-red-800">
+              <ShieldAlert className="w-4 h-4" />
+              AWS Disconnected
+            </span>
+          )}
+          <div className="text-sm text-gray-500 ml-4">Scheduler & Job History</div>
+        </div>
       </div>
 
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
