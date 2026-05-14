@@ -1,9 +1,13 @@
 import os
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
+
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
+
 from api import dashboard, findings, operations, owners, templates, emails
 from services.scheduler import init_scheduler, shutdown_scheduler
 

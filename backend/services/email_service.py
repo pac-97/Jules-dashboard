@@ -41,7 +41,7 @@ class EmailService:
             logger.warning(f"MSAL authentication failed or missing credentials: {e}")
         return "mock_token"
 
-    def send_owner_report_email(self, owner_email: str, accounts: List[str], inspector_report: bytes, cspm_report: bytes, trend_chart: bytes = b"", subject: str = None, body: str = None, cc: str = None) -> bool:
+    def send_owner_report_email(self, owner_email: str, accounts: List[str], inspector_report: bytes, cspm_report: bytes, account_report: bytes = b"", trend_chart: bytes = b"", subject: str = None, body: str = None, cc: str = None) -> bool:
         """
         Sends an email with consolidated account data to an owner using Azure AD Microsoft Graph API.
         """
@@ -92,6 +92,14 @@ class EmailService:
                     }
                 } for cc_email in cc.split(',') if cc_email.strip()
             ]
+
+        if account_report:
+            email_msg["message"]["attachments"].append({
+                "@odata.type": "#microsoft.graph.fileAttachment",
+                "name": "Accounts_Report.xlsx",
+                "contentType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "contentBytes": base64.b64encode(account_report).decode("utf-8")
+            })
 
         if trend_chart:
             email_msg["message"]["attachments"].append({

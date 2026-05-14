@@ -41,19 +41,30 @@ def send_custom_email(req: EmailSendRequest):
             'findings': [f for f in cspm_findings.get('findings', []) if f.get('accountId') in req.accounts]
         }
 
+        # 2b. Download account-level XLSX reports from S3 and merge if multiple accounts are selected
+        account_reports = aws_service.download_account_reports(req.accounts)
+        merged_account_report = report_service.merge_account_reports(account_reports) if account_reports else b""
+        account_summary = report_service.summarize_account_reports(account_reports)
+
         # 3. Generate Reports
         inspector_xlsx = report_service.generate_inspector_report(owner_inspector)
         cspm_xlsx = report_service.generate_cspm_report(owner_cspm)
 
         # 4. Send Email
+        extended_body = req.body or ""
+        if account_summary.get('accounts'):
+            extended_body += "<br><br><strong>Included Account Reports:</strong> " + ", ".join(account_summary['accounts'])
+            extended_body += f"<br><strong>Total findings from account XLSX:</strong> {account_summary.get('findings', 0)}"
+
         success = email_service.send_owner_report_email(
             owner_email=req.to,
             accounts=req.accounts,
             inspector_report=inspector_xlsx,
             cspm_report=cspm_xlsx,
+            account_report=merged_account_report,
             trend_chart=trend_chart,
             subject=req.subject,
-            body=req.body,
+            body=extended_body,
             cc=req.cc
         )
 
