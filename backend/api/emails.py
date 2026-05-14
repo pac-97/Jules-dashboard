@@ -41,30 +41,19 @@ def send_custom_email(req: EmailSendRequest):
             'findings': [f for f in cspm_findings.get('findings', []) if f.get('accountId') in req.accounts]
         }
 
-        # 2b. Build account report from the single shared S3 scores sheet
-        account_scores_df = aws_service.get_account_scores_for_accounts(req.accounts)
-        merged_account_report = report_service.generate_account_report_from_scores(account_scores_df)
-        account_summary = report_service.summarize_account_scores(account_scores_df)
-
         # 3. Generate Reports
         inspector_xlsx = report_service.generate_inspector_report(owner_inspector)
         cspm_xlsx = report_service.generate_cspm_report(owner_cspm)
 
         # 4. Send Email
-        extended_body = req.body or ""
-        if account_summary.get('accounts'):
-            extended_body += "<br><br><strong>Included Account Reports:</strong> " + ", ".join(account_summary['accounts'])
-            extended_body += f"<br><strong>Total findings from account XLSX:</strong> {account_summary.get('findings', 0)}"
-
         success = email_service.send_owner_report_email(
             owner_email=req.to,
             accounts=req.accounts,
             inspector_report=inspector_xlsx,
             cspm_report=cspm_xlsx,
-            account_report=merged_account_report,
             trend_chart=trend_chart,
             subject=req.subject,
-            body=extended_body,
+            body=req.body,
             cc=req.cc
         )
 

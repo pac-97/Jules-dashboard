@@ -38,7 +38,6 @@ pyparsing==3.3.2
 pytest==9.0.3
 python-dateutil==2.9.0.post0
 requests==2.34.1
-python-dotenv==1.0.0
 s3transfer==0.17.0
 six==1.17.0
 starlette==1.0.0
