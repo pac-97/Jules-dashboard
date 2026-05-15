@@ -11,6 +11,7 @@ from datetime import datetime
 
 router = APIRouter()
 
+
 class EmailSendRequest(BaseModel):
     to: str
     cc: Optional[str] = ""
@@ -18,9 +19,11 @@ class EmailSendRequest(BaseModel):
     body: str
     accounts: List[str]
 
+
 @router.get("/logs")
 def get_email_logs():
     return email_log_service.get_logs()
+
 
 @router.post("/send")
 def send_custom_email(req: EmailSendRequest):
@@ -31,45 +34,91 @@ def send_custom_email(req: EmailSendRequest):
         trend_data = aws_service.get_s3_historical_data()
         trend_chart = chart_service.generate_trend_chart(trend_data)
 
-        # 2. Filter findings for the accounts
-        owner_inspector = [f for f in inspector_findings if f.get('accountId') in req.accounts]
+        # 2. Filter findings for selected accounts
+        owner_inspector = [
+            f for f in inspector_findings
+            if f.get('accountId') in req.accounts
+        ]
 
         owner_cspm = {
             'compliance_score': cspm_findings.get('compliance_score', 0),
             'cis_score': cspm_findings.get('cis_score', 0),
             'nist_score': cspm_findings.get('nist_score', 0),
-            'findings': [f for f in cspm_findings.get('findings', []) if f.get('accountId') in req.accounts]
+            'findings': [
+                f for f in cspm_findings.get('findings', [])
+                if f.get('accountId') in req.accounts
+            ]
         }
 
-        # 2b. Build account report from the single shared S3 scores sheet
-        account_scores_df = aws_service.get_account_scores_for_accounts(req.accounts)
-        
-        # Generate benchmark charts
-        cis_chart = chart_service.generate_cis_benchmark_chart(account_scores_df)
-        nist_chart = chart_service.generate_nist_benchmark_chart(account_scores_df)
-        severity_chart = chart_service.generate_severity_breakdown_chart(account_scores_df)
-        
-        # Generate consolidated account report with graphs
-        consolidated_report = report_service.generate_consolidated_account_report(
-            account_scores_df, 
-            cis_chart=cis_chart,
-            nist_chart=nist_chart,
-            severity_chart=severity_chart
+        # 2b. Build account report from shared S3 scores sheet
+        account_scores_df = aws_service.get_account_scores_for_accounts(
+            req.accounts
         )
-        
-        account_summary = report_service.summarize_account_scores(account_scores_df)
 
-        # 3. Generate Reports
-        inspector_xlsx = report_service.generate_inspector_report(owner_inspector)
-        cspm_xlsx = report_service.generate_cspm_report(owner_cspm)
+        # Generate benchmark charts
+        cis_chart = chart_service.generate_cis_benchmark_chart(
+            account_scores_df
+        )
 
-        # 4. Send Email
+        nist_chart = chart_service.generate_nist_benchmark_chart(
+            account_scores_df
+        )
+
+        severity_chart = (
+            chart_service.generate_severity_breakdown_chart(
+                account_scores_df
+            )
+        )
+
+        # Generate consolidated account report
+        consolidated_report = (
+            report_service.generate_consolidated_account_report(
+                account_scores_df,
+                cis_chart=cis_chart,
+                nist_chart=nist_chart,
+                severity_chart=severity_chart
+            )
+        )
+
+        account_summary = report_service.summarize_account_scores(
+            account_scores_df
+        )
+
+        # 3. Generate reports
+        inspector_xlsx = report_service.generate_inspector_report(
+            owner_inspector
+        )
+
+        cspm_xlsx = report_service.generate_cspm_report(
+            owner_cspm
+        )
+
+        # 4. Build extended email body
         extended_body = req.body or ""
-        if account_summary.get('accounts'):
-            extended_body += "<br><br><strong>Included Accounts:</strong> " + ", ".join(account_summary['accounts'])
-            extended_body += f"<br><strong>Total Findings:</strong> {account_summary.get('findings', 0)}"
-            extended_body += f"<br><strong>Critical:</strong> {account_summary.get('critical', 0)} | <strong>High:</strong> {account_summary.get('high', 0)} | <strong>Medium:</strong> {account_summary.get('medium', 0)} | <strong>Low:</strong> {account_summary.get('low', 0)}"
 
+        if account_summary.get('accounts'):
+            extended_body += (
+                "<br><br><strong>Included Accounts:</strong> "
+                + ", ".join(account_summary['accounts'])
+            )
+
+            extended_body += (
+                f"<br><strong>Total Findings:</strong> "
+                f"{account_summary.get('findings', 0)}"
+            )
+
+            extended_body += (
+                f"<br><strong>Critical:</strong> "
+                f"{account_summary.get('critical', 0)} | "
+                f"<strong>High:</strong> "
+                f"{account_summary.get('high', 0)} | "
+                f"<strong>Medium:</strong> "
+                f"{account_summary.get('medium', 0)} | "
+                f"<strong>Low:</strong> "
+                f"{account_summary.get('low', 0)}"
+            )
+
+        # 5. Send email
         success = email_service.send_owner_report_email(
             owner_email=req.to,
             accounts=req.accounts,
@@ -82,28 +131,39 @@ def send_custom_email(req: EmailSendRequest):
             cc=req.cc
         )
 
-        # 5. Log Result
+        # 6. Log result
         status = "SUCCESS" if success else "FAILED"
+
         email_log_service.add_log(
             to=req.to,
             cc=req.cc,
             subject=req.subject,
-            body=req.body,
+            body=extended_body,
             status=status,
             accounts=req.accounts
         )
 
         if not success:
-            raise HTTPException(status_code=500, detail="Failed to send email.")
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to send email."
+            )
 
-        # Update owner lastEmailed state if it matches an owner
+        # Update owner last emailed state
         owners = owner_service.get_owners()
+
         for o in owners:
             if o.get("email") == req.to:
-                o["lastEmailed"] = datetime.now().strftime("%Y-%m-%d %I:%M %p")
+                o["lastEmailed"] = datetime.now().strftime(
+                    "%Y-%m-%d %I:%M %p"
+                )
+
         owner_service.update_owners(owners)
 
-        return {"status": "success", "message": "Email sent and logged successfully"}
+        return {
+            "status": "success",
+            "message": "Email sent and logged successfully"
+        }
 
     except Exception as e:
         email_log_service.add_log(
@@ -114,4 +174,8 @@ def send_custom_email(req: EmailSendRequest):
             status=f"ERROR: {str(e)}",
             accounts=req.accounts
         )
-        raise HTTPException(status_code=500, detail=str(e))
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )

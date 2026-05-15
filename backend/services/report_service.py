@@ -1,11 +1,9 @@
+import pandas as pd
+from typing import List, Dict, Any
 import io
 import logging
-from typing import List, Dict, Any
-
-import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.drawing.image import Image as XLImage
-from openpyxl.utils import get_column_letter
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +140,7 @@ class ReportService:
         # Reopen workbook to add images
         output.seek(0)
         wb = load_workbook(output)
-        ws = wb.active
+        ws = wb['Summary']
         
         # Add charts as images if available
         if cis_chart:

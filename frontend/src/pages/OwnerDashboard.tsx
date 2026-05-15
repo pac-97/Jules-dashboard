@@ -164,7 +164,7 @@ export function OwnerDashboard() {
                 <textarea rows={6} value={emailForm.body} onChange={e => setEmailForm({...emailForm, body: e.target.value})} className="w-full font-mono bg-gray-50 dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-md px-4 py-2 text-sm focus:outline-none focus:border-primary-500" />
               </div>
               <div className="bg-primary-50 dark:bg-primary-900/20 p-3 rounded-lg border border-primary-100 dark:border-primary-800 text-xs text-primary-700 dark:text-primary-300">
-                <span className="font-bold">Attachments: </span> Inspector_Report.xlsx, CSPM_Report.xlsx, Accounts_Report.xlsx, Trend_Chart.png
+                <span className="font-bold">Attachments: </span> Inspector_Report.xlsx, CSPM_Report.xlsx, Trend_Chart.png
               </div>
             </div>
 
