@@ -20,8 +20,8 @@ COPY backend/ ./
 # Copy built frontend assets to the backend static directory
 COPY --from=frontend-builder /app/frontend/dist /app/static
 
-# Expose the single port the unified app runs on
-EXPOSE 3000
+# Use environment variable for port (defaults to 3000)
+ENV PORT=3000
 
 # Start the FastAPI server
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "3000"]
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT}"]

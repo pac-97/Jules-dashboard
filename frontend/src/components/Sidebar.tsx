@@ -1,12 +1,11 @@
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Shield, ShieldAlert, Users, Activity, FileText, History, Cloud } from "lucide-react";
+import { LayoutDashboard, Shield, ShieldAlert, Users, Activity, FileText, History } from "lucide-react";
 
 export function Sidebar() {
   const location = useLocation();
 
   const navItems = [
     { path: "/", label: "Executive Dashboard", icon: LayoutDashboard },
-    { path: "/accounts", label: "AWS Accounts", icon: Cloud },
     { path: "/inspector", label: "Inspector Findings", icon: ShieldAlert },
     { path: "/cspm", label: "CSPM Posture", icon: Shield },
     { path: "/owners", label: "Account Owners", icon: Users },

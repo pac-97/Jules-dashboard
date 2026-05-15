@@ -14,7 +14,7 @@ on:
 
 jobs:
   build_and_run:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - name: Checkout repository
@@ -35,9 +35,10 @@ jobs:
           echo "Running application on port ${{ github.event.inputs.port }}..."
           docker run -d \
             --name security-dashboard \
-            -p ${{ github.event.inputs.port }}:3000 \
+            --network host \
             -v ~/.aws:/root/.aws:ro \
             -e AWS_PROFILE=${AWS_PROFILE:-default} \
+            -e PORT=${{ github.event.inputs.port }} \
             aws-security-dashboard:latest
 
       - name: Get Private IP and Print Access URL

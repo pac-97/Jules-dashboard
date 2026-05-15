@@ -10,15 +10,36 @@ logger = logging.getLogger(__name__)
 class AWSService:
     def __init__(self):
         try:
-            # Using boto3.Session() natively inherits AWS SSO profiles when configured via environment
+            # Check default chain and IAM instance metadata service first (works natively on EC2)
             self.session = boto3.Session(region_name='us-east-1')
-            self.inspector_client = self.session.client('inspector2')
-            self.securityhub_client = self.session.client('securityhub')
-            self.s3_client = self.session.client('s3')
-            self.org_client = self.session.client('organizations')
-            self.sts_client = self.session.client('sts')
+
+            # Test credentials
+            sts = self.session.client('sts')
+            sts.get_caller_identity()
+            logger.info("Successfully authenticated via standard boto3 credential chain.")
+
         except Exception as e:
-            logger.error(f"Failed to initialize boto3 session/clients: {e}")
+            logger.warning(f"Standard authentication failed: {e}. Falling back to AWS SSO lib.")
+            try:
+                import aws_sso_lib
+                profile = os.getenv('AWS_PROFILE', 'default')
+                logger.info(f"Using AWS SSO profile: {profile}")
+                self.session = aws_sso_lib.get_boto3_session(profile=profile, region_name='us-east-1')
+            except Exception as sso_e:
+                logger.error(f"Failed to initialize boto3 via SSO as well: {sso_e}")
+                self.session = None
+
+        try:
+            if self.session:
+                self.inspector_client = self.session.client('inspector2')
+                self.securityhub_client = self.session.client('securityhub')
+                self.s3_client = self.session.client('s3')
+                self.org_client = self.session.client('organizations')
+                self.sts_client = self.session.client('sts')
+            else:
+                raise ValueError("Session is null")
+        except Exception as e:
+            logger.error(f"Failed to initialize clients: {e}")
             self.inspector_client = None
             self.securityhub_client = None
             self.s3_client = None

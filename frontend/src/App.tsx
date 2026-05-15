@@ -8,7 +8,6 @@ import { OwnerDashboard } from "./pages/OwnerDashboard";
 import { OperationsDashboard } from "./pages/OperationsDashboard";
 import { TemplatesDashboard } from "./pages/TemplatesDashboard";
 import { EmailLogsDashboard } from "./pages/EmailLogsDashboard";
-import { AccountsDashboard } from "./pages/AccountsDashboard";
 import { Toaster } from "react-hot-toast";
 
 function App() {
@@ -23,7 +22,6 @@ function App() {
               <Route path="/" element={<ExecutiveDashboard />} />
               <Route path="/inspector" element={<InspectorDashboard />} />
               <Route path="/cspm" element={<CSPMDashboard />} />
-              <Route path="/accounts" element={<AccountsDashboard />} />
               <Route path="/owners" element={<OwnerDashboard />} />
               <Route path="/templates" element={<TemplatesDashboard />} />
               <Route path="/logs" element={<EmailLogsDashboard />} />
