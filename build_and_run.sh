@@ -9,10 +9,10 @@ if [ "$PORT" != "3000" ] && [ "$PORT" != "4000" ]; then
     exit 1
 fi
 
-echo "🚀 Building Docker image aws-security-dashboard..."
+echo " Building Docker image aws-security-dashboard..."
 docker build -t aws-security-dashboard:latest .
 
-echo "🛑 Stopping existing container (if running)..."
+echo " Stopping existing container (if running)..."
 docker stop security-dashboard 2>/dev/null || true
 docker rm security-dashboard 2>/dev/null || true
 
@@ -29,6 +29,6 @@ docker run -d \
 PRIVATE_IP=$(hostname -I | awk '{print $1}')
 
 echo "==========================================================="
-echo "✅ Application deployed successfully!"
-echo "🌐 Access the website at: http://${PRIVATE_IP}:${PORT}"
+echo " Application deployed successfully!"
+echo " Access the website at: http://${PRIVATE_IP}:${PORT}"
 echo "==========================================================="
