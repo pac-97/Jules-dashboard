@@ -32,3 +32,8 @@ def trigger_manual_job(background_tasks: BackgroundTasks):
 @router.get("/aws-status")
 def get_aws_status():
     return aws_service.get_aws_identity()
+
+@router.get("/accounts")
+def get_all_accounts():
+    """Fetch all AWS accounts from Organizations or S3 fallback"""
+    return aws_service.get_all_accounts()

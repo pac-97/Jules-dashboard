@@ -25,7 +25,7 @@ def get_email_logs():
 @router.post("/send")
 def send_custom_email(req: EmailSendRequest):
     try:
-        # 1. Fetch Findings
+        # 1. Fetch Findings and Scores
         inspector_findings = aws_service.get_inspector_findings()
         cspm_findings = aws_service.get_security_hub_findings()
         trend_data = aws_service.get_s3_historical_data()
@@ -43,7 +43,20 @@ def send_custom_email(req: EmailSendRequest):
 
         # 2b. Build account report from the single shared S3 scores sheet
         account_scores_df = aws_service.get_account_scores_for_accounts(req.accounts)
-        merged_account_report = report_service.generate_account_report_from_scores(account_scores_df)
+        
+        # Generate benchmark charts
+        cis_chart = chart_service.generate_cis_benchmark_chart(account_scores_df)
+        nist_chart = chart_service.generate_nist_benchmark_chart(account_scores_df)
+        severity_chart = chart_service.generate_severity_breakdown_chart(account_scores_df)
+        
+        # Generate consolidated account report with graphs
+        consolidated_report = report_service.generate_consolidated_account_report(
+            account_scores_df, 
+            cis_chart=cis_chart,
+            nist_chart=nist_chart,
+            severity_chart=severity_chart
+        )
+        
         account_summary = report_service.summarize_account_scores(account_scores_df)
 
         # 3. Generate Reports
@@ -53,15 +66,16 @@ def send_custom_email(req: EmailSendRequest):
         # 4. Send Email
         extended_body = req.body or ""
         if account_summary.get('accounts'):
-            extended_body += "<br><br><strong>Included Account Reports:</strong> " + ", ".join(account_summary['accounts'])
-            extended_body += f"<br><strong>Total findings from account XLSX:</strong> {account_summary.get('findings', 0)}"
+            extended_body += "<br><br><strong>Included Accounts:</strong> " + ", ".join(account_summary['accounts'])
+            extended_body += f"<br><strong>Total Findings:</strong> {account_summary.get('findings', 0)}"
+            extended_body += f"<br><strong>Critical:</strong> {account_summary.get('critical', 0)} | <strong>High:</strong> {account_summary.get('high', 0)} | <strong>Medium:</strong> {account_summary.get('medium', 0)} | <strong>Low:</strong> {account_summary.get('low', 0)}"
 
         success = email_service.send_owner_report_email(
             owner_email=req.to,
             accounts=req.accounts,
             inspector_report=inspector_xlsx,
             cspm_report=cspm_xlsx,
-            account_report=merged_account_report,
+            account_report=consolidated_report,
             trend_chart=trend_chart,
             subject=req.subject,
             body=extended_body,
